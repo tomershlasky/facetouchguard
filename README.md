@@ -74,6 +74,10 @@ Available macOS sounds: `Basso`, `Blow`, `Bottle`, `Frog`, `Funk`, `Glass`, `Her
 - **[OpenCV](https://opencv.org/)** — Webcam capture and display
 - **Python** — Single-file, ~170 lines
 
+## Inspired By
+
+[FaceGuard](https://github.com/timpratim/faceguard) by [@timpratim](https://github.com/timpratim)
+
 ## License
 
 MIT
