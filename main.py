@@ -6,6 +6,7 @@ import time
 import urllib.request
 
 import cv2
+import numpy as np
 import mediapipe as mp
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision
@@ -131,6 +132,19 @@ def main():
     print("Face Touch Guard running. Press 'q' to quit, 'd' for debug, SPACE to pause.")
 
     while True:
+        # When paused, release camera and wait for key
+        if paused:
+            key = cv2.waitKey(100) & 0xFF
+            if key in (ord("q"), 27):
+                break
+            elif key == ord(" "):
+                paused = False
+                cap = cv2.VideoCapture(CAMERA_INDEX)
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
+                print("  Resumed — camera on")
+            continue
+
         ret, frame = cap.read()
         if not ret:
             break
@@ -142,42 +156,41 @@ def main():
         face_bbox = None
         all_fingertips = []
 
-        if not paused:
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-            frame_ts += 33  # ~30fps in milliseconds
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        frame_ts += 33  # ~30fps in milliseconds
 
-            face_result = face_detector.detect_for_video(mp_image, frame_ts)
-            hand_result = hand_detector.detect_for_video(mp_image, frame_ts)
+        face_result = face_detector.detect_for_video(mp_image, frame_ts)
+        hand_result = hand_detector.detect_for_video(mp_image, frame_ts)
 
-            if face_result.face_landmarks and hand_result.hand_landmarks:
-                face_bbox = get_face_bbox(face_result.face_landmarks[0], w, h)
+        if face_result.face_landmarks and hand_result.hand_landmarks:
+            face_bbox = get_face_bbox(face_result.face_landmarks[0], w, h)
 
-                for hand_lms in hand_result.hand_landmarks:
-                    tips = get_fingertips(hand_lms, w, h)
-                    all_fingertips.extend(tips)
+            for hand_lms in hand_result.hand_landmarks:
+                tips = get_fingertips(hand_lms, w, h)
+                all_fingertips.extend(tips)
 
-                    for tip in tips:
-                        if is_point_in_box(tip, face_bbox):
-                            touching_this_frame = True
-                            break
+                for tip in tips:
+                    if is_point_in_box(tip, face_bbox):
+                        touching_this_frame = True
+                        break
 
-            # Consecutive frame logic
-            if touching_this_frame:
-                consecutive_touch_frames += 1
-            else:
-                consecutive_touch_frames = 0
+        # Consecutive frame logic
+        if touching_this_frame:
+            consecutive_touch_frames += 1
+        else:
+            consecutive_touch_frames = 0
 
-            # Alert if enough consecutive frames and cooldown elapsed
-            now = time.time()
-            if (
-                consecutive_touch_frames >= CONSECUTIVE_FRAMES_NEEDED
-                and now - last_alert_time > COOLDOWN_SECONDS
-            ):
-                play_alert()
-                last_alert_time = now
-                touch_count += 1
-                print(f"Face touch detected! (total: {touch_count})")
+        # Alert if enough consecutive frames and cooldown elapsed
+        now = time.time()
+        if (
+            consecutive_touch_frames >= CONSECUTIVE_FRAMES_NEEDED
+            and now - last_alert_time > COOLDOWN_SECONDS
+        ):
+            play_alert()
+            last_alert_time = now
+            touch_count += 1
+            print(f"Face touch detected! (total: {touch_count})")
 
         # Draw debug overlay
         if show_debug and face_bbox:
@@ -189,12 +202,6 @@ def main():
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 165, 255), 2,
             )
 
-        if paused:
-            cv2.putText(
-                frame, "PAUSED", (w // 2 - 60, h // 2),
-                cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3,
-            )
-
         cv2.imshow("Face Touch Guard", frame)
 
         key = cv2.waitKey(1) & 0xFF
@@ -203,7 +210,18 @@ def main():
         elif key == ord("d"):
             show_debug = not show_debug
         elif key == ord(" "):
-            paused = not paused
+            paused = True
+            consecutive_touch_frames = 0
+            cap.release()
+            cv2.destroyAllWindows()
+            # Show a small window for key input while paused
+            pause_img = np.zeros((FRAME_HEIGHT, FRAME_WIDTH, 3), dtype=np.uint8)
+            cv2.putText(pause_img, "PAUSED", (FRAME_WIDTH // 2 - 100, FRAME_HEIGHT // 2 - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3)
+            cv2.putText(pause_img, "SPACE to resume | q to quit", (FRAME_WIDTH // 2 - 170, FRAME_HEIGHT // 2 + 40),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (150, 150, 150), 1)
+            cv2.imshow("Face Touch Guard", pause_img)
+            print("  Paused — camera off. Press SPACE to resume.")
 
     cap.release()
     cv2.destroyAllWindows()
